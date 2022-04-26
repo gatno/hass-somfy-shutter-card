@@ -1,6 +1,6 @@
 {
-    "name": "Shutter Card",
-    "filename": "hass-shutter-card.js",
+    "name": "Somfy Shutter Card",
+    "filename": "hass-somfy-shutter-card.js",
     "render_readme": true,
-    "homeassistant": "2021.11.0"
+    "homeassistant": "2022.04.0"
 }

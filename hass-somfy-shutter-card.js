@@ -1,4 +1,4 @@
-class ShutterCard extends HTMLElement {
+class SomfyShutterCard extends HTMLElement {
   set hass(hass) {
     const _this = this;
     const entities = this.config.entities;
@@ -470,4 +470,4 @@ class ShutterCard extends HTMLElement {
   }
 }
 
-customElements.define("shutter-card", ShutterCard);
+customElements.define("somfy-shutter-card", SomfyShutterCard);
