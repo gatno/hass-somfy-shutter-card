@@ -12,15 +12,18 @@ class SomfyShutterCard extends HTMLElement {
       }
     
       this.card = card;
+      _this.tiltPositions = {}
       this.appendChild(card);
     
       let allShutters = document.createElement('div');
       allShutters.className = 'sc-shutters';
       entities.forEach(function(entity) {
         let entityId = entity;
+
         if (entity && entity.entity) {
             entityId = entity.entity;
         }
+        
         
         let buttonsPosition = 'left';
         if (entity && entity.buttons_position) {
@@ -46,16 +49,22 @@ class SomfyShutterCard extends HTMLElement {
         if (entity && entity.partial_close_percentage) {
           partial = Math.max(0,Math.min(100,entity.partial_close_percentage)); // make sure this is valid range
         }
-
+                
         let offset = 0;
         if (entity && entity.offset_closed_percentage) {
           offset = Math.max(0,Math.min(100,entity.offset_closed_percentage)); // make sure this is valid range
+        }
+        
+        let my = false;
+        if (entity && entity.my) {
+          my = entity.my;
         }
 
         let tilt = false;
         if (entity && entity.can_tilt) {
           tilt = entity.can_tilt;
         }
+        
         
         let width = 153;
         if (entity && entity.shutter_width_px) {
@@ -77,9 +86,13 @@ class SomfyShutterCard extends HTMLElement {
           </div>
           <div class="sc-shutter-middle" style="flex-flow: ` + (buttonsInRow ? 'column': 'row') + (buttonsContainerReversed ? '-reverse' : '') + ` nowrap;">
             <div class="sc-shutter-buttons" style="flex-flow: ` + (buttonsInRow ? 'row': 'column') + ` wrap;">
-              `+(partial?`<ha-icon-button label="Partially close" class="sc-shutter-button sc-shutter-button-partial" data-command="partial" data-position="`+partial+`"><ha-icon icon="mdi:arrow-expand-vertical"></ha-icon></ha-icon-button>`:``)+`
-              ` + (tilt?`
+             `+ (tilt?`
               <ha-icon-button label="` + hass.localize(`ui.dialogs.more_info_control.cover.open_tilt_cover`) +`" class="sc-shutter-button sc-shutter-button-tilt-open" data-command="tilt-open"><ha-icon icon="mdi:arrow-top-right"></ha-icon></ha-icon-button>
+              `:``) + `
+              `+(my?`
+              <ha-icon-button label="MY Position" class="sc-shutter-button sc-shutter-button-my" data-command="my" data-button="`+my+`">MY</ha-icon-button>
+              `:``) + `
+              ` + (tilt?`
               <ha-icon-button label="` + hass.localize(`ui.dialogs.more_info_control.cover.close_tilt_cover`) +`"class="sc-shutter-button sc-shutter-button-tilt-down" data-command="tilt-close"><ha-icon icon="mdi:arrow-bottom-left"></ha-icon></ha-icon-button>
               `:``) + `
             </div>
@@ -212,11 +225,16 @@ class SomfyShutterCard extends HTMLElement {
                       }
                       break;
                   case 'tilt-open':
-                    service = 'open_cover_tilt';
-                    break;
+                    _this.tiltPositions.entityId = _this.updateTiltPosition(hass, entityId, _this.tiltPositions.entityId + 25)
+                    return;
                   case 'tilt-close':
-                    service = 'close_cover_tilt';
-                    break;
+                    _this.tiltPositions.entityId = _this.updateTiltPosition(hass, entityId, _this.tiltPositions.entityId - 25)
+                    return;
+                  case 'my':
+                    hass.callService('button', "press", {
+                      entity_id: this.dataset.button,
+                    });
+                    return;
                   default:
                     return
                 }
@@ -240,6 +258,7 @@ class SomfyShutterCard extends HTMLElement {
           .sc-shutter-middle { display: flex; width: fit-content; max-width: 100%; margin: auto; }
             .sc-shutter-buttons { flex: 1; text-align: center; margin-top: 0.4rem; display: flex; max-width: 100% }
             .sc-shutter-buttons ha-icon-button { display: block; width: min-content }
+            .sc-shutter-button-my { font-size:5px }
             .sc-shutter-selector { flex: 1; }
               .sc-shutter-selector-partial { position: absolute; top:0; left: 9px; width: 88%; height: 1px; background-color: gray; }
               .sc-shutter-selector-picture { position: relative; margin: auto; background-size: 100% 100%; min-height: 150px; max-height: 100%; }
@@ -290,7 +309,7 @@ class SomfyShutterCard extends HTMLElement {
       if (entity && entity.disable_end_buttons) {
         disableEnd = entity.disable_end_buttons;
       }
-
+      
       const shutter = _this.card.querySelector('div[data-shutter="' + entityId +'"]');
       const slide = shutter.querySelector('.sc-shutter-selector-slide');
       const picker = shutter.querySelector('.sc-shutter-selector-picker');
@@ -299,12 +318,20 @@ class SomfyShutterCard extends HTMLElement {
       const friendlyName = (entity && entity.name) ? entity.name : state ? state.attributes.friendly_name : 'unknown';
       const currentPosition = state ? state.attributes.current_position : 'unknown';
       const movementState = state? state.state : 'unknown';
+      const currentTiltPosition = state ? state.attributes.current_tilt_position : 'unknown';
+
+      if (state && state.attributes.current_tilt_position) {
+        _this.tiltPositions.entityId = currentTiltPosition
+      } else {
+        _this.tiltPositions.entityId = 0;
+      }
       
       shutter.querySelectorAll('.sc-shutter-label').forEach(function(shutterLabel) {
           shutterLabel.innerHTML = friendlyName;
       })
       
       if (!_this.isUpdating) {
+        console.log("hi ", new Date().toISOString() )
         shutter.querySelectorAll('.sc-shutter-position').forEach(function (shutterPosition) {
           let visiblePosition;
           let positionText;
@@ -313,6 +340,8 @@ class SomfyShutterCard extends HTMLElement {
             positionText = _this.positionPercentToText(visiblePosition, invertPercentage, alwaysPercentage, hass);
             if (disableEnd) {
               _this.changeButtonState(shutter, currentPosition, invertPercentage);
+              _this.changeTiltButtonState(shutter, currentTiltPosition, invertPercentage);
+
             }
             if (visiblePosition == 100 && offset) {
               positionText += ' ('+ (100-Math.round(Math.abs(currentPosition-visiblePosition)/offset*100)) +' %)';
@@ -323,6 +352,8 @@ class SomfyShutterCard extends HTMLElement {
             positionText = _this.positionPercentToText(visiblePosition, invertPercentage, alwaysPercentage, hass);
             if (disableEnd) {
               _this.changeButtonState(shutter, currentPosition, invertPercentage);
+              _this.changeTiltButtonState(shutter, currentTiltPosition, invertPercentage);
+
             }
             if (visiblePosition == 0 && offset) {
               positionText += ' ('+ (100-Math.round(Math.abs(currentPosition-visiblePosition)/offset*100)) +' %)';
@@ -367,14 +398,41 @@ class SomfyShutterCard extends HTMLElement {
       }) ;
     }
   }
+  
+  changeTiltButtonState(shutter, percent, inverted) {
+    if (percent == 0) {
+      shutter.querySelectorAll('.sc-shutter-button-tilt-open').forEach(function(button) {
+        button.disabled = inverted;
+      });
+      shutter.querySelectorAll('.sc-shutter-button-tilt-down').forEach(function(button) {
+        button.disabled = !inverted;
+      });
+    }
+    else if (percent == 100) {
+      shutter.querySelectorAll('.sc-shutter-button-tilt-up').forEach(function(button) {
+        button.disabled = !inverted;
+      });
+      shutter.querySelectorAll('.sc-shutter-button-tilt-down').forEach(function(button) {
+        button.disabled = inverted;
+      }) ;     
+    }
+    else {      
+      shutter.querySelectorAll('.sc-shutter-button-tilt-up').forEach(function(button) {
+        button.disabled = false;
+      });
+      shutter.querySelectorAll('.sc-shutter-button-tilt-down').forEach(function(button) {
+        button.disabled = false;
+      }) ;
+    }
+  }
 
   positionPercentToText(percent, inverted, alwaysPercentage, hass) {
     if (!alwaysPercentage) {
       if (percent == 100) {
-        return hass.localize(inverted?'ui.components.logbook.messages.was_closed':'ui.components.logbook.messages.was_opened');
+        return "offen";
       }
       else if (percent == 0) {
-        return hass.localize(inverted?'ui.components.logbook.messages.was_opened':'ui.components.logbook.messages.was_closed');
+        return "zu";
       }
     }
     return percent + ' %';
@@ -450,6 +508,19 @@ class SomfyShutterCard extends HTMLElement {
       entity_id: entityId,
       position: shutterPosition
     });
+  }
+  
+  updateTiltPosition(hass, entityId, tiltPosition) {
+    tiltPosition = Math.round(tiltPosition);
+  
+    tiltPosition = Math.max(0,Math.min(100,tiltPosition)); // make sure this is valid range
+    
+    hass.callService('cover', 'set_cover_tilt_position', {
+      entity_id: entityId,
+      tilt_position: tiltPosition
+    });
+    
+    return tiltPosition;
   }
 
   setConfig(config) {
